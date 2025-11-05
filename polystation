@@ -1,0 +1,94 @@
+// mini_poly_func.c — Fútbol "PolyStation" ultrabásico, seccionado por funciones
+// Reglas: sin offside, sin faltas, sin corners; goal kick si el atacante saca por línea de gol;
+// gol si cruza meta; 2 tiempos cortos; formaciones fijas; portero con imán suave.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+#define W 80            // ancho del campo
+#define H 40            // alto del campo
+#define N 5             // jugadores por equipo: 0=GK, 1..4 campo (mini)
+#define TICKS_HALF 500  // duración de cada tiempo (ajustable)
+
+typedef struct { int x, y; } Pos;
+
+/* ======== Estado global (simple para mantener 1 archivo) ======== */
+static Pos A[N], B[N];       // A = azules, B = rojos
+static Pos ball;             // posición del balón
+static int owner = -1;       // -1 libre; 0..4 A; 100..104 B
+static int scoreA=0, scoreB=0;
+static int half=1, ticks=0;
+static int last_touch_team=0; // 0=A, 1=B
+
+// Metas (rectángulos)
+static const int goalL_xmin=0,   goalL_xmax=1,   goalL_ymin=H/2-4, goalL_ymax=H/2+4;     // defiende A
+static const int goalR_xmin=W-2, goalR_xmax=W-1, goalR_ymin=H/2-4, goalR_ymax=H/2+4;     // defiende B
+
+/* ================= Utilidades ================= */
+static int clamp(int v, int lo, int hi){ if(v<lo) return lo; if(v>hi) return hi; return v; }
+static bool inrect(int x,int y,int xmin,int xmax,int ymin,int ymax){
+    return x>=xmin && x<=xmax && y>=ymin && y<=ymax;
+}
+
+/* ================= Núcleo del juego ================= */
+// 1) Formaciones fijas
+static void set_formation(int code){
+    // GK centrados
+    A[0]=(Pos){3, H/2};        B[0]=(Pos){W-4, H/2};
+    if(code==1){ // variante
+        A[1]=(Pos){15, 10}; A[2]=(Pos){15, 20}; A[3]=(Pos){15, 30}; A[4]=(Pos){25, 20};
+        B[1]=(Pos){W-16, 10}; B[2]=(Pos){W-16, 20}; B[3]=(Pos){W-16, 30}; B[4]=(Pos){W-26, 20};
+    }else{       // líneas más simples
+        A[1]=(Pos){12,  8}; A[2]=(Pos){12, 16}; A[3]=(Pos){12, 24}; A[4]=(Pos){12, 32};
+        B[1]=(Pos){W-13,  8}; B[2]=(Pos){W-13, 16}; B[3]=(Pos){W-13, 24}; B[4]=(Pos){W-13, 32};
+    }
+}
+
+// 2) Saque inicial
+static void kickoff(void){
+    owner=-1;
+    ball.x=W/2; ball.y=H/2;
+}
+
+// 3) Saque de puerta
+static void goal_kick(int defending){ // 0=A, 1=B
+    if(defending==0){ A[0].x = 4; A[0].y = H/2; ball = A[0]; owner = 0;    }
+    else            { B[0].x = W-5; B[0].y = H/2; ball = B[0]; owner = 100;}
+}
+
+// 4) Imán del portero en área chica
+static void gk_magnet(void){
+    // Área chica A (izquierda) y B (derecha)
+    int axmin=0, axmax=5, aymin=H/2-5, aymax=H/2+5;
+    int bxmin=W-6, bxmax=W-1, bymin=H/2-5, bymax=H/2+5;
+
+    if(inrect(ball.x, ball.y, axmin, axmax, aymin, aymax)){
+        if(abs(A[0].x - ball.x)<=1 && abs(A[0].y - ball.y)<=1){ owner=0; ball=A[0]; }
+    }else if(inrect(ball.x, ball.y, bxmin, bxmax, bymin, bymax)){
+        if(abs(B[0].x - ball.x)<=1 && abs(B[0].y - ball.y)<=1){ owner=100; ball=B[0]; }
+    }
+}
+
+// 5) Reglas de salida/gol
+static void check_goal_or_out(void){
+    // Gol
+    if(inrect(ball.x, ball.y, goalL_xmin, goalL_xmax, goalL_ymin, goalL_ymax)){ scoreB++; kickoff(); return; }
+    if(inrect(ball.x, ball.y, goalR_xmin, goalR_xmax, goalR_ymin, goalR_ymax)){ scoreA++; kickoff(); return; }
+
+    // Laterales: sin banda -> pegar al borde
+    if(ball.y < 0){ ball.y=0; owner=-1; }
+    if(ball.y >= H){ ball.y=H-1; owner=-1; }
+
+    // Línea de gol: sin corner; goal kick si atacante fue el último en tocar
+    if(ball.x < 0){ // izquierda (defiende A)
+        if(last_touch_team==1){ goal_kick(0); return; }
+        ball.x=0; owner=-1;
+    }
+    if(ball.x >= W){ // derecha (defiende B)
+        if(last_touch_team==0){ goal_kick(1); return; }
+        ball.x=W-1; owner=-1;
+    }
+}
+
+
