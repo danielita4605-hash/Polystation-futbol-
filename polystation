@@ -91,4 +91,118 @@ static void check_goal_or_out(void){
     }
 }
 
+/* ================== Acciones (cada una en su función) ================== */
+// Opción 1: iniciar/reiniciar
+static void cmd_kickoff(void){ kickoff(); }
 
+// Opción 2: mover jugador
+static void cmd_move_player(int pid, int dx, int dy){
+    if(pid>=0 && pid<N){ // A
+        A[pid].x = clamp(A[pid].x+dx, 0, W-1);
+        A[pid].y = clamp(A[pid].y+dy, 0, H-1);
+        if(owner==pid) ball = A[pid];
+    }else if(pid>=100 && pid<100+N){ // B
+        int i = pid-100;
+        B[i].x = clamp(B[i].x+dx, 0, W-1);
+        B[i].y = clamp(B[i].y+dy, 0, H-1);
+        if(owner==pid) ball = B[i];
+    }
+    gk_magnet();
+}
+
+// Opción 3: pase
+static void cmd_pass_ball(int from, int to){
+    if(owner!=from) return; // debe tenerla quien pasa
+    if(to<0 || (to>=N && to<100) || to>=100+N) return; // id inválido
+    ball = (to<100)? A[to] : B[to-100];
+    owner = to;
+    last_touch_team = (to<100)? 0 : 1;
+    gk_magnet();
+}
+
+// Opción 4: chutar (deja libre el balón)
+static void cmd_shoot(int dx, int dy){
+    if(owner!=-1) last_touch_team = (owner<100)? 0 : 1;
+    ball.x += dx; ball.y += dy; owner = -1;
+    check_goal_or_out();
+    gk_magnet();
+}
+
+// Opción 5: avanzar tiempo
+static void cmd_tick(void){
+    ticks++;
+    if(ticks >= TICKS_HALF){
+        ticks = 0;
+        if(half==1){ half=2; kickoff(); }
+        else { printf("Fin del partido.\n"); }
+    }
+}
+
+// Opción 6: imprimir estado
+static void cmd_print_state(void){
+    printf("\nA %d - %d B | Tiempo %d/%d (H%d)\n", scoreA, scoreB, ticks, TICKS_HALF, half);
+    printf("Ball (%d,%d) owner:%d\n", ball.x, ball.y, owner);
+    printf("A: GK(%2d,%2d) 1(%2d,%2d) 2(%2d,%2d) 3(%2d,%2d) 4(%2d,%2d)\n",
+        A[0].x,A[0].y,A[1].x,A[1].y,A[2].x,A[2].y,A[3].x,A[3].y,A[4].x,A[4].y);
+    printf("B: GK(%2d,%2d) 1(%2d,%2d) 2(%2d,%2d) 3(%2d,%2d) 4(%2d,%2d)\n",
+        B[0].x,B[0].y,B[1].x,B[1].y,B[2].x,B[2].y,B[3].x,B[3].y,B[4].x,B[4].y);
+}
+
+// Opción 7: formar 4-3-3
+static void cmd_form_433(void){ set_formation(1); cmd_kickoff(); cmd_print_state(); }
+
+// Opción 8: formar 4-4-2
+static void cmd_form_442(void){ set_formation(0); cmd_kickoff(); cmd_print_state(); }
+
+/* ================== Setup simple ================== */
+static void bootstrap(void){
+    set_formation(0); // arranque 4-4-2
+    kickoff();
+}
+
+/* ================== Menú / loop ================== */
+static void print_menu(void){
+    printf("\n==== MINI POLY (funciones) ====\n");
+    printf("1) Kickoff (iniciar/reiniciar)\n");
+    printf("2) Mover jugador  (pid dx dy)  pid: A=0..4, B=100..104\n");
+    printf("3) Pasar balon    (from to)\n");
+    printf("4) Chutar balon   (dx dy)\n");
+    printf("5) Tick (avanzar tiempo)\n");
+    printf("6) Mostrar estado\n");
+    printf("7) Formacion 4-3-3\n");
+    printf("8) Formacion 4-4-2\n");
+    printf("0) Salir\n> ");
+}
+
+int main(void){
+    bootstrap();
+    cmd_print_state();
+
+    while(1){
+        print_menu();
+        int op; if(scanf("%d",&op)!=1) break;
+        if(op==0) break;
+
+        if(op==1){
+            cmd_kickoff();
+        }else if(op==2){
+            int pid,dx,dy; printf("pid dx dy: ");
+            if(scanf("%d %d %d",&pid,&dx,&dy)==3) cmd_move_player(pid,dx,dy);
+        }else if(op==3){
+            int a,b; printf("from to: ");
+            if(scanf("%d %d",&a,&b)==2) cmd_pass_ball(a,b);
+        }else if(op==4){
+            int dx,dy; printf("dx dy: ");
+            if(scanf("%d %d",&dx,&dy)==2) cmd_shoot(dx,dy);
+        }else if(op==5){
+            cmd_tick();
+        }else if(op==6){
+            cmd_print_state();
+        }else if(op==7){
+            cmd_form_433();
+        }else if(op==8){
+            cmd_form_442();
+        }
+    }
+    return 0;
+}
